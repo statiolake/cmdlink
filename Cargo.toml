@@ -3,6 +3,18 @@ name = "cmdlink"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "cmdlink"
+path = "src/main.rs"
+
+[[bin]]
+name = "cmdlinker"
+path = "src/cmdlinker.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.56"
+itertools = "0.10.3"
+thiserror = "1.0.30"
+which = "4.2.4"
