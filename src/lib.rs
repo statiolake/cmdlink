@@ -40,7 +40,7 @@ impl From<io::Error> for Error {
     }
 }
 
-type Result<T, E = Error> = std::result::Result<T, E>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Metadata {
     program_path: PathBuf,
@@ -196,14 +196,4 @@ pub fn run(metadata: &Metadata) -> Result<i32> {
         .spawn()?
         .wait()?;
     Ok(res.code().unwrap_or(1))
-}
-
-pub fn run_for_current_exe() -> Result<i32> {
-    let exe = env::current_exe()?;
-    if !exe.exists() {
-        panic!("internal error: link execuable does not exist")
-    }
-
-    let metadata = Metadata::load(&exe)?;
-    run(&metadata)
 }
