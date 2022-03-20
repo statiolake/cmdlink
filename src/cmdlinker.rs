@@ -1,8 +1,8 @@
 use itertools::Itertools;
 use std::env::args;
 use std::fs::write;
-use std::os::windows::fs::symlink_file;
 use std::path::Path;
+use std::process::exit;
 
 fn main() {
     let args = args().collect::<Vec<_>>();
@@ -17,39 +17,41 @@ fn main() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("error: {} not found: {}", args[1], e);
-            return;
+            exit(1);
         }
     };
     let alias_name = &args[2];
     let args = &args[3..];
 
-    let cmdlink = Path::new("cmdlink.exe");
-    if !cmdlink.exists() {
-        eprintln!("error: cmdlink.exe is not found");
-    }
-
-    let metadata_file_contents = vec![
-        format!("path = {}", program_path.display()),
-        format!("args = [{}]", args.iter().map(|s| escape(s)).format(", ")),
-    ]
-    .join("\n");
+    let metadata_file_contents = format!(
+        r#"return {{
+    program_path = [[{program_path}]],
+    gen_args = function(args)
+        return {{{args}}}
+    end,
+}}"#,
+        program_path = program_path.display(),
+        args = args.iter().map(|s| escape(s)).format(", "),
+    );
 
     let alias = Path::new(alias_name).with_extension("exe");
 
-    if symlink_file(cmdlink, &alias).is_err() {
-        eprintln!("error: creating symlink failed; make sure you have a permission");
-        return;
-    }
-
     if write(alias.with_extension("meta"), &metadata_file_contents).is_err() {
         eprintln!("error: writing metadata failed");
-        return;
+        exit(1);
     }
 
     println!("alias created: {}", alias_name);
     println!("{}", metadata_file_contents);
+    println!("run `cmdlink update` to enable this alias")
 }
 
 fn escape(arg: &str) -> String {
-    format!("\"{}\"", arg)
+    if arg == "%*" {
+        "unpack(args)".to_string()
+    } else if arg.contains('\\') {
+        format!("{{{}}}", arg)
+    } else {
+        format!("\"{}\"", arg)
+    }
 }

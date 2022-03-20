@@ -18,3 +18,8 @@ anyhow = "1.0.56"
 itertools = "0.10.3"
 thiserror = "1.0.30"
 which = "4.2.4"
+
+[dependencies.rlua]
+version = "0.19.1"
+features = ['builtin-lua51']
+default-features = false
