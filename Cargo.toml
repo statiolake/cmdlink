@@ -8,6 +8,10 @@ name = "cmdlink"
 path = "src/main.rs"
 
 [[bin]]
+name = "gcmdlink"
+path = "src/gmain.rs"
+
+[[bin]]
 name = "cmdlinker"
 path = "src/cmdlinker.rs"
 

@@ -45,7 +45,7 @@ impl Metadata {
         Ok(Metadata { lua })
     }
 
-    fn program_path(&self) -> Result<PathBuf> {
+    pub fn program_path(&self) -> Result<PathBuf> {
         self.lua.context(|ctx| {
             let config = config(ctx)?;
             let program_path: String = config.get("program_path")?;
@@ -53,12 +53,26 @@ impl Metadata {
         })
     }
 
-    fn gen_args(&self, args: Vec<String>) -> Result<Vec<String>> {
+    pub fn gen_args(&self, args: Vec<String>) -> Result<Vec<String>> {
         self.lua.context(|ctx| {
             let config = config(ctx)?;
             let gen_args: Function = config.get("gen_args")?;
             let args = gen_args.call(args)?;
             Ok(args)
+        })
+    }
+
+    pub fn gui(&self) -> Result<bool> {
+        self.lua.context(|ctx| {
+            let config = config(ctx)?;
+            Ok(config.get("gui")?)
+        })
+    }
+
+    pub fn background(&self) -> Result<bool> {
+        self.lua.context(|ctx| {
+            let config = config(ctx)?;
+            Ok(config.get("background")?)
         })
     }
 }
@@ -70,12 +84,21 @@ fn config(ctx: Context) -> rlua::Result<Table> {
 pub fn run(metadata: &Metadata) -> Result<i32> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     let program_path = &metadata.program_path()?;
-    let res = Command::new(program_path)
-        .args(metadata.gen_args(args)?)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()?
-        .wait()?;
-    Ok(res.code().unwrap_or(1))
+
+    let mut cmd = Command::new(program_path);
+    cmd.args(metadata.gen_args(args)?);
+    if !metadata.gui()? {
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    }
+
+    let mut child = cmd.spawn()?;
+
+    if metadata.background()? {
+        Ok(0)
+    } else {
+        let res = child.wait()?;
+        Ok(res.code().unwrap_or(1))
+    }
 }

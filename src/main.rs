@@ -1,23 +1,33 @@
 use std::env::{args, current_exe};
 use std::ffi::OsStr;
 use std::fs::{copy, read_dir};
-use std::io;
 use std::path::Path;
 use std::process::exit;
 
-pub fn run_alias_mode() -> cmdlink::Result<i32> {
-    let exe = current_exe()?;
-    if !exe.exists() {
-        panic!("internal error: link execuable does not exist")
+use cmdlink::{Metadata, Result};
+
+fn run_maintainance_mode(args: Vec<String>) -> Result<()> {
+    if args.get(1).map(|x| &**x) == Some("update") {
+        update_aliases()?;
     }
 
-    let metadata = cmdlink::Metadata::load(&exe)?;
-    cmdlink::run(&metadata)
+    Ok(())
 }
 
-fn update_aliases() -> io::Result<()> {
+fn update_aliases() -> Result<()> {
     let exe = current_exe()?;
-    println!("updating from {}...", exe.display());
+    let gexe = {
+        let mut gexe = exe.with_file_name("gcmdlink.exe");
+        if !gexe.exists() {
+            println!("GUI cmdlink does not found; fallbacking to CUI cmdlink");
+            gexe = exe.clone();
+        }
+        gexe
+    };
+
+    println!("cmdlink.exe found at:");
+    println!("  CUI: {}", exe.display());
+    println!("  GUI: {}", gexe.display());
 
     for entry in read_dir(".")? {
         let entry = entry?;
@@ -25,19 +35,25 @@ fn update_aliases() -> io::Result<()> {
             continue;
         }
         let alias = entry.path().with_extension("exe");
-        copy(&exe, &alias)?;
-        println!("updated {}", alias.display());
+
+        let metadata = Metadata::parse(entry.path())?;
+        let exe = if metadata.gui()? { &gexe } else { &exe };
+
+        copy(exe, &alias)?;
+        println!("updated {} (by {})", alias.display(), exe.display());
     }
 
     Ok(())
 }
 
-fn run_maintainance_mode(args: Vec<String>) -> io::Result<()> {
-    if args.get(1).map(|x| &**x) == Some("update") {
-        update_aliases()?;
+pub fn run_alias_mode() -> Result<i32> {
+    let exe = current_exe()?;
+    if !exe.exists() {
+        panic!("internal error: link execuable does not exist")
     }
 
-    Ok(())
+    let metadata = Metadata::load(&exe)?;
+    cmdlink::run(&metadata)
 }
 
 fn main() {

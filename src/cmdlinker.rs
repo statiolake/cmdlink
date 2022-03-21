@@ -29,6 +29,8 @@ fn main() {
     gen_args = function(args)
         return {{{args}}}
     end,
+    gui = false,
+    background = false,
 }}"#,
         program_path = program_path.display(),
         args = args.iter().map(|s| escape(s)).format(", "),
