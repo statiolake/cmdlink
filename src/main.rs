@@ -30,16 +30,50 @@ fn update_aliases() -> Result<()> {
     println!("  GUI: {}", gexe.display());
 
     for entry in read_dir(".")? {
-        let entry = entry?;
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                eprintln!("failed to read some DirEntry: {}, skipping", err);
+                continue;
+            }
+        };
+
         if entry.path().extension() != Some(OsStr::new("meta")) {
             continue;
         }
+
         let alias = entry.path().with_extension("exe");
 
-        let metadata = Metadata::parse(entry.path())?;
-        let exe = if metadata.gui()? { &gexe } else { &exe };
+        let metadata = match Metadata::parse(entry.path()) {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                eprintln!(
+                    "failed to parse metadata for {}: {}, skipping",
+                    alias.display(),
+                    err
+                );
+                continue;
+            }
+        };
+        let is_gui = match metadata.gui() {
+            Ok(gui) => gui,
+            Err(err) => {
+                eprintln!("failed to read 'gui': {}, skipping", err);
+                continue;
+            }
+        };
+        let exe = if is_gui { &gexe } else { &exe };
 
-        copy(exe, &alias)?;
+        if let Err(err) = copy(exe, &alias) {
+            eprintln!(
+                "failed to copy {} to {}: {}, skipping",
+                exe.display(),
+                alias.display(),
+                err
+            );
+            continue;
+        }
+
         println!("updated {} (by {})", alias.display(), exe.display());
     }
 
