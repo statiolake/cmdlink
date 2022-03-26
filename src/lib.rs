@@ -1,4 +1,5 @@
 use rlua::{Context, Function, Lua, Table};
+use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -34,6 +35,7 @@ impl Metadata {
 
     pub fn parse(metadata_path: PathBuf) -> Result<Metadata> {
         let lua = Lua::new();
+        register_builtins(&lua)?;
         lua.context(|ctx| -> Result<()> {
             let source = read_to_string(&metadata_path).map_err(|_| Error::MetadataNotFound {
                 path: metadata_path.clone(),
@@ -62,6 +64,31 @@ impl Metadata {
         })
     }
 
+    pub fn get_envvars(&self) -> Result<HashMap<String, String>> {
+        self.lua.context(|ctx| -> Result<HashMap<String, String>> {
+            let config = config(ctx)?;
+            if !config.contains_key("modify_envvars")? {
+                return Ok(env::vars().collect());
+            }
+
+            let table = ctx.create_table()?;
+            for (k, v) in env::vars() {
+                table.set(k, v)?;
+            }
+
+            let modify_envvars: Function = config.get("modify_envvars")?;
+            modify_envvars.call(table.clone())?;
+
+            let mut envvars = HashMap::new();
+            for pair in table.pairs() {
+                let (k, v) = pair?;
+                envvars.insert(k, v);
+            }
+
+            Ok(envvars)
+        })
+    }
+
     pub fn gui(&self) -> Result<bool> {
         self.lua.context(|ctx| {
             let config = config(ctx)?;
@@ -75,6 +102,12 @@ impl Metadata {
             Ok(config.get("background")?)
         })
     }
+}
+
+fn register_builtins(lua: &Lua) -> rlua::Result<()> {
+    lua.context(|ctx| -> rlua::Result<()> { ctx.load(include_str!("globals.lua")).exec() })?;
+
+    Ok(())
 }
 
 fn config(ctx: Context) -> rlua::Result<Table> {
@@ -92,6 +125,7 @@ pub fn run(metadata: &Metadata) -> Result<i32> {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
     }
+    cmd.envs(metadata.get_envvars()?);
 
     let mut child = cmd.spawn()?;
 
