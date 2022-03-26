@@ -66,18 +66,24 @@ impl Metadata {
 
     pub fn get_envvars(&self) -> Result<HashMap<String, String>> {
         self.lua.context(|ctx| -> Result<HashMap<String, String>> {
-            let config = config(ctx)?;
-            if !config.contains_key("modify_envvars")? {
-                return Ok(env::vars().collect());
-            }
-
             let table = ctx.create_table()?;
             for (k, v) in env::vars() {
                 table.set(k, v)?;
             }
 
-            let modify_envvars: Function = config.get("modify_envvars")?;
-            modify_envvars.call(table.clone())?;
+            // add program's directory to path
+            let path = self.program_path()?;
+            if let Some(path) = path.parent() {
+                let add_to_variable: Function = ctx.globals().get("add_to_variable")?;
+                add_to_variable.call((table.clone(), "PATH", path.display().to_string()))?;
+            }
+
+            // modify envvars by user-defined key
+            let config = config(ctx)?;
+            if config.contains_key("modify_envvars")? {
+                let modify_envvars: Function = config.get("modify_envvars")?;
+                modify_envvars.call(table.clone())?;
+            }
 
             let mut envvars = HashMap::new();
             for pair in table.pairs() {
