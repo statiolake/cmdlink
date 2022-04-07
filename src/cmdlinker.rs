@@ -1,27 +1,84 @@
+use clap::StructOpt;
 use itertools::Itertools;
-use std::env::args;
+use std::ffi::OsStr;
 use std::fs::write;
 use std::path::Path;
 use std::process::exit;
 
+#[derive(clap::Parser, Debug)]
+struct Args {
+    program_path: String,
+    alias_name: Option<String>,
+    args: Vec<String>,
+    #[clap(short, long, required = true)]
+    into: String,
+}
+
+macro_rules! error {
+    ($fmt:literal $(,$args:expr)*) => {{
+        eprintln!(concat!("error: ", $fmt) $(, $args)*);
+        exit(1);
+    }}
+}
+
+macro_rules! unwrap {
+    ($e:expr) => {
+        match $e {
+            Ok(value) => value,
+            Err(e) => error!("{:?}", e),
+        }
+    };
+}
+
 fn main() {
-    let args = args().collect::<Vec<_>>();
-    if args.len() < 3 {
-        eprintln!(
-            "usage: {} {{program_path}} {{alias_name}} {{args...}}",
-            args[0]
+    let args = Args::parse();
+
+    let into = Path::new(&args.into);
+    if !into.exists() || !into.is_dir() {
+        error!(
+            "directory {} does not exist or not a directory",
+            into.display()
         );
     }
 
-    let program_path = match which::which(&args[1]) {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("error: {} not found: {}", args[1], e);
-            exit(1);
+    if let Some(alias_name) = &args.alias_name {
+        // Single file alias mode
+        let exec = match which::which(&args.program_path) {
+            Ok(path) => path,
+            Err(e) => error!("{} not found: {}", args.program_path, e),
+        };
+        let mut alias = into.to_path_buf();
+        alias.push(&alias_name);
+        create_alias(&exec, &alias, args.args);
+    } else {
+        // Directory file alias mode
+        let exec = Path::new(&args.program_path);
+        if !exec.exists() || !exec.is_dir() {
+            error!("directory {} not found", args.program_path);
         }
-    };
-    let alias_name = &args[2];
-    let args = &args[3..];
+
+        for entry in unwrap!(exec.read_dir()) {
+            let entry = unwrap!(entry);
+            let exec = entry.path();
+            let meta = unwrap!(entry.metadata());
+            if !meta.is_file() {
+                continue;
+            }
+            if exec.extension() != Some(OsStr::new("exe")) {
+                continue;
+            }
+            let mut alias = into.to_path_buf();
+            alias.push(exec.file_name().unwrap());
+            create_alias(&exec, &alias, vec![]);
+        }
+    }
+}
+
+fn create_alias(exec: &Path, alias: &Path, mut args: Vec<String>) {
+    if args.is_empty() {
+        // default argument
+        args = vec!["%*".to_string()];
+    }
 
     let metadata_file_contents = format!(
         r#"return {{
@@ -32,18 +89,15 @@ fn main() {
     gui = false,
     background = false,
 }}"#,
-        program_path = program_path.display(),
+        program_path = exec.display(),
         args = args.iter().map(|s| escape(s)).format(", "),
     );
 
-    let alias = Path::new(alias_name).with_extension("exe");
-
     if write(alias.with_extension("meta"), &metadata_file_contents).is_err() {
-        eprintln!("error: writing metadata failed");
-        exit(1);
+        error!("writing metadata failed");
     }
 
-    println!("alias created: {}", alias_name);
+    println!("alias created: {}", alias.display());
     println!("{}", metadata_file_contents);
     println!("run `cmdlink update` to enable this alias")
 }
