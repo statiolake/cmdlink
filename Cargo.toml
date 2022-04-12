@@ -23,6 +23,7 @@ itertools = "0.10.3"
 thiserror = "1.0.30"
 which = "4.2.4"
 clap = { version = "3.1.8", features = ["derive"] }
+indoc = "1.0.4"
 
 [dependencies.rlua]
 version = "0.19.1"

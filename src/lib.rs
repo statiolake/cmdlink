@@ -1,6 +1,7 @@
+use itertools::Itertools as _;
 use rlua::{Context, Function, Lua, Table};
 use std::collections::HashMap;
-use std::fs::read_to_string;
+use std::fs::{read_to_string, write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, io};
@@ -17,6 +18,7 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+#[derive(Debug)]
 pub struct Metadata {
     lua: Lua,
 }
@@ -107,6 +109,75 @@ impl Metadata {
             let config = config(ctx)?;
             Ok(config.get("background")?)
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct MetadataWriter {
+    prog_path: PathBuf,
+    args: Vec<String>,
+    gui: bool,
+    background: bool,
+}
+
+impl MetadataWriter {
+    pub fn new(prog_path: PathBuf) -> Self {
+        Self {
+            prog_path,
+            args: vec!["%*".to_string()],
+            gui: false,
+            background: false,
+        }
+    }
+
+    pub fn args(&mut self, args: Vec<String>) -> &mut Self {
+        self.args = args;
+        self
+    }
+
+    // get_envvars() are not supported
+
+    pub fn gui(&mut self, gui: bool) -> &mut Self {
+        self.gui = gui;
+        self
+    }
+
+    pub fn background(&mut self, background: bool) -> &mut Self {
+        self.background = background;
+        self
+    }
+
+    pub fn write(self, path: &Path) -> io::Result<()> {
+        fn escape_arg(arg: &str) -> String {
+            if arg == "%*" {
+                "unpack(args)".to_string()
+            } else if arg.contains('\\') {
+                format!("[[{}]]", arg)
+            } else {
+                format!("\"{}\"", arg)
+            }
+        }
+
+        let args = self.args.iter().map(|a| escape_arg(a));
+
+        let contents = indoc::formatdoc! {
+            r#"
+                return {{
+                    prog_path = [[{prog_path}]],
+                    gen_args = function(args)
+                        return {{{args}}}
+                    end,
+                    gui = {gui},
+                    background = {background},
+                }}
+            "#,
+            prog_path = self.prog_path.display(),
+            args = args.format(", "),
+            gui = self.gui,
+            background = self.background,
+        };
+
+        write(path, contents)
     }
 }
 

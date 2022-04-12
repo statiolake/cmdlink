@@ -1,6 +1,7 @@
 use anyhow::{anyhow, ensure};
 use anyhow::{Ok, Result};
 use clap::Parser;
+use cmdlink::MetadataWriter;
 use itertools::Itertools;
 use rlua::{Lua, Table};
 use std::fs::{read_to_string, write};
@@ -127,26 +128,13 @@ fn main() {
 }
 
 fn create_alias<S: AsRef<str>>(prog_path: &Path, alias_path: &Path, args: &[S]) -> Result<()> {
-    let args = if args.is_empty() {
-        vec!["%*"]
-    } else {
-        args.iter().map(|arg| arg.as_ref()).collect()
-    };
-
-    let metadata_file_contents = format!(
-        r#"return {{
-    prog_path = [[{prog_path}]],
-    gen_args = function(args)
-        return {{{args}}}
-    end,
-    gui = false,
-    background = false,
-}}
-"#,
-        prog_path = prog_path.display(),
-        args = args.iter().map(|s| escape(s)).format(", "),
-    );
-    write(alias_path.with_extension("meta"), &metadata_file_contents)?;
+    let mut writer = MetadataWriter::new(prog_path.to_owned());
+    if !args.is_empty() {
+        let args = args.iter().map(|arg| arg.as_ref().to_string()).collect();
+        writer.args(args);
+    }
+    let metadata_path = alias_path.with_extension("meta");
+    writer.write(&metadata_path)?;
     println!("{}", alias_path.display());
 
     Ok(())
@@ -176,14 +164,4 @@ fn create_alias_in_dir(prog_dir_path: &Path, root_path: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn escape(arg: &str) -> String {
-    if arg == "%*" {
-        "unpack(args)".to_string()
-    } else if arg.contains('\\') {
-        format!("{{{}}}", arg)
-    } else {
-        format!("\"{}\"", arg)
-    }
 }
