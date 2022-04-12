@@ -47,11 +47,11 @@ impl Metadata {
         Ok(Metadata { lua })
     }
 
-    pub fn program_path(&self) -> Result<PathBuf> {
+    pub fn prog_path(&self) -> Result<PathBuf> {
         self.lua.context(|ctx| {
             let config = config(ctx)?;
-            let program_path: String = config.get("program_path")?;
-            Ok(PathBuf::from(program_path))
+            let prog_path: String = config.get("prog_path")?;
+            Ok(PathBuf::from(prog_path))
         })
     }
 
@@ -72,7 +72,7 @@ impl Metadata {
             }
 
             // add program's directory to path
-            let path = self.program_path()?;
+            let path = self.prog_path()?;
             if let Some(path) = path.parent() {
                 let add_to_variable: Function = ctx.globals().get("add_to_variable")?;
                 add_to_variable.call((table.clone(), "PATH", path.display().to_string()))?;
@@ -122,9 +122,9 @@ fn config(ctx: Context) -> rlua::Result<Table> {
 
 pub fn run(metadata: &Metadata) -> Result<i32> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    let program_path = &metadata.program_path()?;
+    let prog_path = &metadata.prog_path()?;
 
-    let mut cmd = Command::new(program_path);
+    let mut cmd = Command::new(prog_path);
     cmd.args(metadata.gen_args(args)?);
     if !metadata.gui()? {
         cmd.stdin(Stdio::inherit())
