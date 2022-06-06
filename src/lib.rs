@@ -1,10 +1,12 @@
 use itertools::Itertools as _;
 use rlua::{Context, Function, Lua, Table};
-use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::{collections::HashMap, env::current_exe};
 use std::{env, io};
+
+const BACKGROUND_CHILD_MARKER: &str = "____MARKER__RUN_IN_BACKGROUND_a1a11601____";
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -63,6 +65,18 @@ impl Metadata {
             let gen_args: Function = config.get("gen_args")?;
             let args = gen_args.call(args)?;
             Ok(args)
+        })
+    }
+
+    pub fn restart_args(&self, status: i32) -> Result<Option<Vec<String>>> {
+        self.lua.context(|ctx| {
+            let config = config(ctx)?;
+            let restart_args: Function = match config.get("restart_args") {
+                Ok(func) => func,
+                Err(_) => return Ok(None),
+            };
+            let next_args = restart_args.call(status)?;
+            Ok(next_args)
         })
     }
 
@@ -192,24 +206,41 @@ fn config(ctx: Context) -> rlua::Result<Table> {
 }
 
 pub fn run(metadata: &Metadata) -> Result<i32> {
-    let args = env::args().skip(1).collect::<Vec<_>>();
-    let prog_path = &metadata.prog_path()?;
-
-    let mut cmd = Command::new(prog_path);
-    cmd.args(metadata.gen_args(args)?);
-    if !metadata.gui()? {
-        cmd.stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
+    let mut args = env::args().skip(1).peekable();
+    let mut is_child = false;
+    if args.peek().map(|s| &**s) == Some(BACKGROUND_CHILD_MARKER) {
+        args.next();
+        is_child = true;
     }
-    cmd.envs(metadata.get_envvars()?);
+    let args = args.collect_vec();
 
-    let mut child = cmd.spawn()?;
+    // If this specified as a background process, run itself as a detached process and then run the
+    // actual process. This is needed to support restart_args in background command.
+    if metadata.background()? && !is_child {
+        Command::new(current_exe()?)
+            .arg(BACKGROUND_CHILD_MARKER)
+            .args(args)
+            .spawn()?;
+        return Ok(0);
+    }
 
-    if metadata.background()? {
-        Ok(0)
-    } else {
-        let res = child.wait()?;
-        Ok(res.code().unwrap_or(1))
+    let prog_path = &metadata.prog_path()?;
+    let mut args = metadata.gen_args(args)?;
+    loop {
+        let mut cmd = Command::new(prog_path);
+        cmd.args(args);
+        if !metadata.gui()? {
+            cmd.stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
+        }
+        cmd.envs(metadata.get_envvars()?);
+
+        let res = cmd.spawn()?.wait()?;
+        let status = res.code().unwrap_or(1);
+        args = match metadata.restart_args(status)? {
+            Some(args) => args,
+            None => return Ok(status),
+        };
     }
 }
