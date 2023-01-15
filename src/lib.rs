@@ -51,10 +51,16 @@ impl Metadata {
         Ok(Metadata { lua })
     }
 
-    pub fn prog_path(&self) -> Result<PathBuf> {
+    pub fn prog_path(&self, args: Vec<String>) -> Result<PathBuf> {
         self.lua.context(|ctx| {
             let config = config(ctx)?;
-            let prog_path: String = config.get("prog_path")?;
+
+            let prog_path: String = if let Ok(prog_path) = config.get::<_, Function>("prog_path") {
+                prog_path.call(args)?
+            } else {
+                config.get("prog_path")?
+            };
+
             Ok(PathBuf::from(prog_path))
         })
     }
@@ -80,7 +86,7 @@ impl Metadata {
         })
     }
 
-    pub fn get_envvars(&self) -> Result<HashMap<String, String>> {
+    pub fn get_envvars(&self, args: Vec<String>) -> Result<HashMap<String, String>> {
         self.lua.context(|ctx| -> Result<HashMap<String, String>> {
             let table = ctx.create_table()?;
             for (k, v) in env::vars() {
@@ -88,7 +94,7 @@ impl Metadata {
             }
 
             // add program's directory to path
-            let path = self.prog_path()?;
+            let path = self.prog_path(args)?;
             if let Some(path) = path.parent() {
                 let add_to_variable: Function = ctx.globals().get("add_to_variable")?;
                 add_to_variable.call((table.clone(), "PATH", path.display().to_string()))?;
@@ -212,20 +218,20 @@ pub fn run(metadata: &Metadata) -> Result<i32> {
         args.next();
         is_child = true;
     }
-    let args = args.collect_vec();
+    let orig_args = args.collect_vec();
 
     // If this specified as a background process, run itself as a detached process and then run the
     // actual process. This is needed to support restart_args in background command.
     if metadata.background()? && !is_child {
         Command::new(current_exe()?)
             .arg(BACKGROUND_CHILD_MARKER)
-            .args(args)
+            .args(orig_args)
             .spawn()?;
         return Ok(0);
     }
 
-    let prog_path = &metadata.prog_path()?;
-    let mut args = metadata.gen_args(args)?;
+    let prog_path = &metadata.prog_path(orig_args.clone())?;
+    let mut args = metadata.gen_args(orig_args.clone())?;
     loop {
         let mut cmd = Command::new(prog_path);
         cmd.args(args);
@@ -234,7 +240,7 @@ pub fn run(metadata: &Metadata) -> Result<i32> {
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
         }
-        cmd.envs(metadata.get_envvars()?);
+        cmd.envs(metadata.get_envvars(orig_args.clone())?);
 
         let res = cmd.spawn()?.wait()?;
         let status = res.code().unwrap_or(1);
