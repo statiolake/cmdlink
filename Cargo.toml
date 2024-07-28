@@ -5,15 +5,15 @@ edition = "2021"
 
 [[bin]]
 name = "cmdlink"
-path = "src/main.rs"
+path = "src/bin/main.rs"
 
 [[bin]]
 name = "gcmdlink"
-path = "src/gmain.rs"
+path = "src/bin/gmain.rs"
 
 [[bin]]
 name = "cmdlinker"
-path = "src/cmdlinker.rs"
+path = "src/bin/cmdlinker.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
