@@ -264,7 +264,7 @@ struct Alias {
 }
 
 impl Alias {
-    pub fn try_from_alias_path(alias_path: PathBuf) -> Result<Self> {
+    pub fn _try_from_alias_path(alias_path: PathBuf) -> Result<Self> {
         if alias_path.extension().unwrap_or(OsStr::new("")) != get_os_ext()? {
             return Err(anyhow!("invalid extension"));
         }

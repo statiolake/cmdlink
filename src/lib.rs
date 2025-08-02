@@ -97,14 +97,14 @@ impl Metadata {
             let path = self.prog_path(args)?;
             if let Some(path) = path.parent() {
                 let add_to_variable: Function = ctx.globals().get("add_to_variable")?;
-                add_to_variable.call((table.clone(), "PATH", path.display().to_string()))?;
+                add_to_variable.call::<_, ()>((table.clone(), "PATH", path.display().to_string()))?;
             }
 
             // modify envvars by user-defined key
             let config = config(ctx)?;
             if config.contains_key("modify_envvars")? {
                 let modify_envvars: Function = config.get("modify_envvars")?;
-                modify_envvars.call(table.clone())?;
+                modify_envvars.call::<_, ()>(table.clone())?;
             }
 
             let mut envvars = HashMap::new();
